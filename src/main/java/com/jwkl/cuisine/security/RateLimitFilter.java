@@ -32,6 +32,12 @@ public class RateLimitFilter implements Filter {
         HttpServletRequest httpRequest = (HttpServletRequest) request;
         HttpServletResponse httpResponse = (HttpServletResponse) response;
 
+        // 💡 關鍵修復：如果是 OPTIONS 預檢請求，直接放行不進行限流，避免瀏覽器 Preflight 失敗
+        if ("OPTIONS".equalsIgnoreCase(httpRequest.getMethod())) {
+            chain.doFilter(request, response);
+            return;
+        }
+
         String path = httpRequest.getRequestURI();
 
         // 僅對後端 API 路由進行限流

@@ -20,6 +20,12 @@ public class ApiKeyFilter implements Filter {
         HttpServletRequest httpRequest = (HttpServletRequest) request;
         HttpServletResponse httpResponse = (HttpServletResponse) response;
 
+        // 💡 關鍵修復：如果是 OPTIONS 預檢請求，直接放行，讓 Spring MVC CORS 配置處理，防堵 401 被攔截
+        if ("OPTIONS".equalsIgnoreCase(httpRequest.getMethod())) {
+            chain.doFilter(request, response);
+            return;
+        }
+
         String path = httpRequest.getRequestURI();
 
         // 僅校驗 /api/ 開頭的後端 API 路由，排除靜態網頁或健康檢查等
