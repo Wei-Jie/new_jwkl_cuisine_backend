@@ -84,6 +84,23 @@ public class OrderController {
     }
 
     /**
+     * 後台管理：條件過濾獲取訂單列表 (起迄日期與狀態篩選)
+     */
+    @GetMapping("/search")
+    public ResponseEntity<List<Order>> searchOrders(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate) {
+        
+        String queryStatus = (status == null || status.trim().isEmpty() || "全部".equals(status)) ? null : status.trim();
+        String queryStart = (startDate == null || startDate.trim().isEmpty()) ? null : startDate.trim().replace("-", "/");
+        String queryEnd = (endDate == null || endDate.trim().isEmpty()) ? null : endDate.trim().replace("-", "/");
+        
+        List<Order> filtered = orderRepository.findOrdersByFilters(queryStatus, queryStart, queryEnd);
+        return ResponseEntity.ok(filtered);
+    }
+
+    /**
      * 後台管理：更新整筆訂單主檔資訊 (供編輯 Modal 對接使用)
      */
     @PutMapping("/{orderId}")
