@@ -1,0 +1,40 @@
+package com.jwkl.cuisine.security;
+
+import jakarta.servlet.*;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+import java.io.IOException;
+
+@Component
+public class ApiKeyFilter implements Filter {
+
+    @Value("${security.api-key:JWKL_CUISINE_DEFAULT_SECRET_API_KEY}")
+    private String apiKey;
+
+    @Override
+    public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
+            throws IOException, ServletException {
+        
+        HttpServletRequest httpRequest = (HttpServletRequest) request;
+        HttpServletResponse httpResponse = (HttpServletResponse) response;
+
+        String path = httpRequest.getRequestURI();
+
+        // 僅校驗 /api/ 開頭的後端 API 路由，排除靜態網頁或健康檢查等
+        if (path.startsWith("/api/")) {
+            String clientKey = httpRequest.getHeader("X-API-KEY");
+
+            if (clientKey == null || !clientKey.equals(apiKey)) {
+                // 金鑰不吻合，立即在毫秒級速度下拋出 401 Unauthorized，拒絕存取資料庫與 Cloud Run
+                httpResponse.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                httpResponse.setContentType("application/json;charset=utf-8");
+                httpResponse.getWriter().write("{\"status\":\"error\",\"error\":\"【拒絕存取】API-KEY 校驗失敗，未授權的操作！\"}");
+                return;
+            }
+        }
+
+        chain.doFilter(request, response);
+    }
+}

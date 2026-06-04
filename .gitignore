@@ -1,0 +1,17 @@
+/target/
+.mvn/
+.idea/
+*.class
+*.log
+*.bak
+*.temp
+.DS_Store
+.classpath
+.project
+.settings/
+*.sw?
+*.jar
+*.war
+
+# Local sensitive configs
+src/main/resources/application-local.properties
