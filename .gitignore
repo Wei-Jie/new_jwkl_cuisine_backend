@@ -1,5 +1,4 @@
 /target/
-.mvn/
 .idea/
 *.class
 *.log
@@ -11,6 +10,7 @@
 .settings/
 *.sw?
 *.jar
+!.mvn/wrapper/maven-wrapper.jar
 *.war
 
 # Local sensitive configs
