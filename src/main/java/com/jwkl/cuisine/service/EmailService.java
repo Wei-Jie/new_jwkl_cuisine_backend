@@ -58,7 +58,7 @@ public class EmailService {
             if ("CREATED".equalsIgnoreCase(type)) {
                 subject = "【小灶私廚】預約訂購確認通知 - 單號: " + order.getOrderId();
                 title = "感謝您的預約訂購！";
-                desc = "我們已收到您的訂購需求，以下是您的預約明細。店主將會盡快為您確認訂單與安排製作。";
+                desc = "我們已收到您的訂購需求，以下是您的預約明細。小灶私廚會盡快與您聯繫訂單進行確認，謝謝。";
             } else if ("COMPLETED".equalsIgnoreCase(type)) {
                 subject = "【小灶私廚】訂單已完成/出貨通知 - 單號: " + order.getOrderId();
                 title = "您的美味餐點已出貨/製作完成！";
