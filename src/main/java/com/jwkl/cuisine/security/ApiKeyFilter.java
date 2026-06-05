@@ -28,8 +28,8 @@ public class ApiKeyFilter implements Filter {
 
         String path = httpRequest.getRequestURI();
 
-        // 僅校驗 /api/ 開頭的後端 API 路由，排除靜態網頁或健康檢查等
-        if (path.startsWith("/api/")) {
+        // 僅校驗 /api/ 開頭的後端 API 路由，排除靜態網頁、健康檢查或前台公開查詢路由 (如 faqs, menus)
+        if (path.startsWith("/api/") && !path.equals("/api/v1/faqs") && !path.equals("/api/v1/menus")) {
             String clientKey = httpRequest.getHeader("X-API-KEY");
 
             if (clientKey == null || !clientKey.equals(apiKey)) {
