@@ -319,6 +319,9 @@ public class OrderService {
         }
         
         List<OrderItem> items = orderItemRepository.findByOrderId(orderId);
+        // 用於累計本訂單內扣除的同商品數量，防止併發扣庫存防爆防禦失效
+        java.util.Map<String, Integer> newlyReducedMap = new java.util.HashMap<>();
+        
         for (OrderItem item : items) {
             // 💡 關鍵修正：跳過折扣品項即可，不論明細狀態為何，只要出貨就必須扣減實體總庫存
             if ("PROD_DISCOUNT".equals(item.getProductId())) {
@@ -330,7 +333,13 @@ public class OrderService {
                 Menu menu = menuOpt.get();
                 if (menu.getIsStockManaged()) {
                     if (isNewDelivered) {
+                        int alreadyReduced = newlyReducedMap.getOrDefault(item.getProductId(), 0);
+                        int availableStock = menu.getStock() - alreadyReduced;
+                        if (availableStock - item.getQty() < 0) {
+                            throw new IllegalArgumentException("儲存失敗！品項「" + menu.getName() + "」總庫存不足（目前僅剩 " + availableStock + "，欲扣除 " + item.getQty() + "）。請先補足庫存！");
+                        }
                         menu.setStock(menu.getStock() - item.getQty());
+                        newlyReducedMap.put(item.getProductId(), alreadyReduced + item.getQty());
                     } else {
                         menu.setStock(menu.getStock() + item.getQty());
                     }
