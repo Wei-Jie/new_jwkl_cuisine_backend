@@ -34,6 +34,21 @@ public class FaqController {
     }
 
     /**
+     * 更新常見問題項目 (後台管理，對接前端 PUT 請求)
+     */
+    @PutMapping("/{id}")
+    public ResponseEntity<?> updateFaq(@PathVariable Integer id, @RequestBody Faq updatedFaq) {
+        return faqRepository.findById(id).map(faq -> {
+            faq.setQuestion(updatedFaq.getQuestion());
+            faq.setAnswer(updatedFaq.getAnswer());
+            faq.setSortOrder(updatedFaq.getSortOrder());
+            faq.setImageUrl(updatedFaq.getImageUrl());
+            Faq saved = faqRepository.save(faq);
+            return ResponseEntity.ok(saved);
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
      * 刪除常見問題 (後台管理)
      */
     @DeleteMapping("/{id}")
