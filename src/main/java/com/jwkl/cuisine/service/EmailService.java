@@ -111,9 +111,6 @@ public class EmailService {
                         .append("</tr>");
             }
 
-            String deliveryLabel = "預計取貨/出貨日";
-            String deliveryVal = order.getDeliveryDate() != null ? order.getDeliveryDate() : "確認中";
-
             String htmlContent = "<div style='font-family: \"Helvetica Neue\", Helvetica, Arial, \"Microsoft JhengHei\", sans-serif; background-color: #faf8f5; padding: 20px;'>"
                     + "  <div style='max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); border: 1px solid #ece6dc; overflow: hidden;'>"
                     + "    <div style='background: linear-gradient(135deg, #b45309, #d97706); padding: 30px 20px; text-align: center; color: #ffffff;'>"
@@ -128,7 +125,6 @@ public class EmailService {
                     + "      <table style='width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 20px;'>"
                     + "        <tr><td style='padding: 6px 0; color: #8c857b; width: 120px;'>訂單編號：</td><td style='padding: 6px 0; font-weight: bold; color: #1f2937;'>" + order.getOrderId() + "</td></tr>"
                     + "        <tr><td style='padding: 6px 0; color: #8c857b;'>下單日期：</td><td style='padding: 6px 0; color: #1f2937;'>" + order.getOrderDate() + "</td></tr>"
-                    + "        <tr><td style='padding: 6px 0; color: #8c857b;'>" + deliveryLabel + "：</td><td style='padding: 6px 0; color: #1f2937; font-weight: bold;'>" + deliveryVal + "</td></tr>"
                     + "        <tr><td style='padding: 6px 0; color: #8c857b;'>聯絡電話：</td><td style='padding: 6px 0; color: #1f2937;'>" + order.getPhone() + "</td></tr>"
                     + "        <tr><td style='padding: 6px 0; color: #8c857b;'>付款狀態：</td><td style='padding: 6px 0; color: #1f2937;'><span style='background-color: " + ("已付款".equals(order.getPaymentStatus()) ? "#dcfce7; color: #15803d;" : "#fef3c7; color: #b45309;") + " padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;'>" + order.getPaymentStatus() + "</span></td></tr>"
                     + "      </table>"

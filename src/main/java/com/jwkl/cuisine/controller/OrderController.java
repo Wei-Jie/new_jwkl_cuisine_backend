@@ -249,6 +249,56 @@ public class OrderController {
         }
     }
 
+    @GetMapping("/debug-network")
+    public ResponseEntity<?> debugNetwork() {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            // 1. 取得外網 IP
+            java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+                .connectTimeout(java.time.Duration.ofSeconds(4))
+                .build();
+            java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+                .uri(java.net.URI.create("https://ifconfig.me/ip"))
+                .timeout(java.time.Duration.ofSeconds(4))
+                .build();
+            try {
+                java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+                result.put("outbound_ip", response.body().trim());
+            } catch (Exception e) {
+                result.put("outbound_ip_error", e.getClass().getName() + ": " + e.getMessage());
+            }
+
+            // 2. 測試 TCP 連線與 SSL 握手到 smtp.gmail.com:465
+            try {
+                javax.net.ssl.SSLSocketFactory sslsocketfactory = (javax.net.ssl.SSLSocketFactory) javax.net.ssl.SSLSocketFactory.getDefault();
+                try (javax.net.ssl.SSLSocket sslsocket = (javax.net.ssl.SSLSocket) sslsocketfactory.createSocket()) {
+                    sslsocket.connect(new java.net.InetSocketAddress("smtp.gmail.com", 465), 4000);
+                    sslsocket.setSoTimeout(4000);
+                    sslsocket.startHandshake();
+                    result.put("smtp_gmail_465_ssl", "SUCCESS");
+                }
+            } catch (Exception e) {
+                result.put("smtp_gmail_465_ssl_error", e.getClass().getName() + ": " + e.getMessage());
+            }
+
+            // 3. 測試 HTTPS GET 連線到 api.line.me:443
+            try {
+                java.net.http.HttpRequest lineRequest = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create("https://api.line.me/"))
+                    .timeout(java.time.Duration.ofSeconds(4))
+                    .build();
+                java.net.http.HttpResponse<String> response = client.send(lineRequest, java.net.http.HttpResponse.BodyHandlers.ofString());
+                result.put("api_line_https", "SUCCESS (" + response.statusCode() + ")");
+            } catch (Exception e) {
+                result.put("api_line_https_error", e.getClass().getName() + ": " + e.getMessage());
+            }
+            
+        } catch (Exception e) {
+            result.put("global_error", e.getMessage());
+        }
+        return ResponseEntity.ok(result);
+    }
+
     private String getClientIp(HttpServletRequest request) {
         String xf = request.getHeader("X-Forwarded-For");
         if (xf != null && !xf.isEmpty()) {

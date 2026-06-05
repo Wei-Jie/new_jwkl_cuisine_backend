@@ -10,8 +10,13 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
-import org.springframework.web.client.RestTemplate;
 import java.util.*;
+import org.springframework.web.client.RestTemplate;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
 public class LineNotifyService {
@@ -38,6 +43,8 @@ public class LineNotifyService {
     private MenuRepository menuRepository;
 
     private final RestTemplate restTemplate = new RestTemplate();
+    private final HttpClient httpClient = HttpClient.newBuilder().build();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * 發送新訂單推播通知至老闆的手機 (支援 LINE Bot, Telegram Bot 雙通道防線)
@@ -74,7 +81,7 @@ public class LineNotifyService {
         sb.append("=========================\n");
         sb.append(" 訂單號碼：").append(order.getOrderId()).append("\n");
         sb.append(" 訂購日期：").append(order.getOrderDate()).append("\n");
-        sb.append(" 預定出貨日：").append(order.getDeliveryDate() != null ? order.getDeliveryDate() : "未填").append("\n");
+
         sb.append("-------------------------\n");
         sb.append(" 顧客名稱：").append(order.getCustomerName()).append("\n");
         sb.append(" 手機號碼：").append(order.getPhone()).append("\n");
@@ -164,11 +171,7 @@ public class LineNotifyService {
         try {
             String url = "https://api.line.me/v2/bot/message/push";
             
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("Authorization", "Bearer " + lineBotChannelToken.trim());
-
-            // 建立 LINE Messaging API 規定的 Body 格式
+            // 建立 LINE Messaging API Body
             Map<String, Object> body = new HashMap<>();
             body.put("to", lineBotAdminUserId.trim());
             
@@ -177,16 +180,24 @@ public class LineNotifyService {
             msgMap.put("type", "text");
             msgMap.put("text", text);
             messages.add(msgMap);
-            
             body.put("messages", messages);
 
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
-            ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
+            String jsonBody = objectMapper.writeValueAsString(body);
+            String cleanToken = lineBotChannelToken.trim().replace(" ", "+");
 
-            if (response.getStatusCode() == HttpStatus.OK) {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .header("Content-Type", "application/json")
+                    .header("Authorization", "Bearer " + cleanToken)
+                    .POST(HttpRequest.BodyPublishers.ofString(jsonBody, java.nio.charset.StandardCharsets.UTF_8))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() == 200) {
                 System.out.println("[LINE Bot 推播] 訂單通知已透過 Messaging API 成功推送至老闆手機！");
             } else {
-                System.err.println("[LINE Bot 推播] 回應異常：" + response.getBody());
+                System.err.println("[LINE Bot 推播] 回應異常，狀態碼：" + response.statusCode() + "，內容：" + response.body());
             }
         } catch (Exception e) {
             System.err.println("[LINE Bot 推播] 送出異常：" + e.getMessage());
