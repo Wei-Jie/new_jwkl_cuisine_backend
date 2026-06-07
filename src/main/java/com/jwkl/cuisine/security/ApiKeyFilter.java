@@ -27,9 +27,25 @@ public class ApiKeyFilter implements Filter {
         }
 
         String path = httpRequest.getRequestURI();
+        String method = httpRequest.getMethod();
 
-        // 僅校驗 /api/ 開頭的後端 API 路由，排除靜態網頁、健康檢查或前台公開查詢路由 (如 faqs, menus)
-        if (path.startsWith("/api/") && !path.equals("/api/v1/faqs") && !path.equals("/api/v1/menus")) {
+        // 判斷是否為前台公開的 API 白名單路由與對應 Method
+        boolean isPublicRoute = false;
+        if ("GET".equalsIgnoreCase(method)) {
+            if (path.equals("/api/v1/faqs") || 
+                path.equals("/api/v1/menus") || 
+                path.equals("/api/v1/system-configs") || 
+                path.equals("/api/v1/orders/track")) {
+                isPublicRoute = true;
+            }
+        } else if ("POST".equalsIgnoreCase(method)) {
+            if (path.equals("/api/v1/orders")) {
+                isPublicRoute = true;
+            }
+        }
+
+        // 僅校驗 /api/ 開頭的後端 API 路由，排除靜態網頁、健康檢查或前台公開免 Key 路由
+        if (path.startsWith("/api/") && !isPublicRoute) {
             String clientKey = httpRequest.getHeader("X-API-KEY");
 
             if (clientKey == null || !clientKey.equals(apiKey)) {
