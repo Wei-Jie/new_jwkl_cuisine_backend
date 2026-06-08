@@ -8,12 +8,17 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Optional;
 
+import com.jwkl.cuisine.service.ImageStorageService;
+
 @RestController
 @RequestMapping("/api/v1/menus")
 public class MenuController {
 
     @Autowired
     private MenuRepository menuRepository;
+
+    @Autowired
+    private ImageStorageService imageStorageService;
 
     /**
      * 查詢所有上架商品 (前台使用)
@@ -54,13 +59,14 @@ public class MenuController {
         return ResponseEntity.ok(saved);
     }
 
-    /**
-     * 刪除菜單品項 (後台管理)
-     */
     @DeleteMapping("/{productId}")
     public ResponseEntity<?> deleteMenu(@PathVariable String productId) {
-        Optional<Menu> menu = menuRepository.findById(productId);
-        if (menu.isPresent()) {
+        Optional<Menu> menuOpt = menuRepository.findById(productId);
+        if (menuOpt.isPresent()) {
+            Menu menu = menuOpt.get();
+            if (menu.getImageUrl() != null && !menu.getImageUrl().trim().isEmpty()) {
+                imageStorageService.deleteImageByUrl(menu.getImageUrl());
+            }
             menuRepository.deleteById(productId);
             return ResponseEntity.ok("{\"status\":\"success\",\"message\":\"品項已成功刪除！\"}");
         }
