@@ -29,7 +29,7 @@ public class Order {
     private BigDecimal amount; // 訂單總金額
 
     @Column(length = 20)
-    private String status = "待確認"; // 訂單狀態 (待確認/已接單/已出貨/已完成)
+    private String status = "待確認"; // 訂單狀態 (待確認/已接單/已出貨/已結單)
 
     @Column(name = "delivery_date", length = 10)
     private String deliveryDate; // 出貨日 / 預計取貨日 (YYYY/MM/DD)

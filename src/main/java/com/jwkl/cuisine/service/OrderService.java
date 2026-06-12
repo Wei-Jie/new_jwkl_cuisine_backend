@@ -261,9 +261,9 @@ public class OrderService {
             }
             Order saved = orderRepository.save(dbOrder);
             
-            // 檢查是否從未出貨轉換為已出貨/已完成
-            boolean isOldDelivered = "已出貨".equals(oldStatus) || "已完成".equals(oldStatus);
-            boolean isNewDelivered = "已出貨".equals(newStatus) || "已完成".equals(newStatus);
+            // 檢查是否從未出貨轉換為已出貨/已結單
+            boolean isOldDelivered = "已出貨".equals(oldStatus) || "已結單".equals(oldStatus);
+            boolean isNewDelivered = "已出貨".equals(newStatus) || "已結單".equals(newStatus);
             if (!isOldDelivered && isNewDelivered) {
                 try {
                     List<OrderItem> details = orderItemRepository.findByOrderId(orderId);
@@ -292,8 +292,8 @@ public class OrderService {
             order.setStatus(status);
             Order saved = orderRepository.save(order);
             
-            boolean isOldDelivered = "已出貨".equals(oldStatus) || "已完成".equals(oldStatus);
-            boolean isNewDelivered = "已出貨".equals(status) || "已完成".equals(status);
+            boolean isOldDelivered = "已出貨".equals(oldStatus) || "已結單".equals(oldStatus);
+            boolean isNewDelivered = "已出貨".equals(status) || "已結單".equals(status);
             if (!isOldDelivered && isNewDelivered) {
                 try {
                     List<OrderItem> details = orderItemRepository.findByOrderId(orderId);
@@ -311,8 +311,8 @@ public class OrderService {
      * 輔助方法：當主訂單出貨/退回狀態時，連動實體總庫存 (all_stock)
      */
     private void adjustPhysicalStockOnStatusChange(String orderId, String oldStatus, String newStatus) {
-        boolean isOldDelivered = "已出貨".equals(oldStatus) || "已完成".equals(oldStatus);
-        boolean isNewDelivered = "已出貨".equals(newStatus) || "已完成".equals(newStatus);
+        boolean isOldDelivered = "已出貨".equals(oldStatus) || "已結單".equals(oldStatus);
+        boolean isNewDelivered = "已出貨".equals(newStatus) || "已結單".equals(newStatus);
         
         if (isOldDelivered == isNewDelivered) {
             return; // 狀態未發生「出貨與否」的跨邊界變更，不異動總庫存

@@ -22,19 +22,19 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Integer> {
         "FROM order_items oi " +
         "JOIN orders o ON oi.order_id = o.order_id " +
         "JOIN menus m ON oi.product_id = m.product_id " +
-        "WHERE m.name = :menuName AND o.status <> '待確認' AND o.status <> '已出貨' AND o.status <> '已完成' AND o.status <> '已取消' AND o.status <> '已退回' AND (oi.item_status = '待製作' OR oi.item_status = '已完成')", 
+        "WHERE m.name = :menuName AND o.status <> '待確認' AND o.status <> '已出貨' AND o.status <> '已結單' AND o.status <> '已取消' AND o.status <> '已退回' AND (oi.item_status = '待製作' OR oi.item_status = '已完成')", 
         nativeQuery = true)
     List<java.util.Map<String, Object>> findScheduleMgmtByItem(@org.springframework.data.repository.query.Param("menuName") String menuName);
 
     /**
      * 實時動態計算某商品的預約保留庫存 (res_stock)
-     * 條件：明細狀態為「已完成」，且訂單狀態非已出貨、非已完成、非已取消、非已退回
+     * 條件：明細狀態為「已完成」，且訂單狀態非已出貨、非已結單、非已取消、非已退回
      */
     @org.springframework.data.jpa.repository.Query(value = 
         "SELECT COALESCE(SUM(oi.qty), 0) FROM order_items oi " +
         "JOIN orders o ON oi.order_id = o.order_id " +
         "WHERE oi.product_id = :productId AND oi.item_status = '已完成' " +
-        "AND o.status <> '已出貨' AND o.status <> '已完成' AND o.status <> '已取消' AND o.status <> '已退回'", 
+        "AND o.status <> '已出貨' AND o.status <> '已結單' AND o.status <> '已取消' AND o.status <> '已退回'", 
         nativeQuery = true)
     int getReservedStockByProductId(@org.springframework.data.repository.query.Param("productId") String productId);
 }
