@@ -35,7 +35,8 @@ public class ApiKeyFilter implements Filter {
             if (path.equals("/api/v1/faqs") || 
                 path.equals("/api/v1/menus") || 
                 path.equals("/api/v1/system-configs") || 
-                path.equals("/api/v1/orders/track")) {
+                path.equals("/api/v1/orders/track") ||
+                path.startsWith("/api/v1/orders/receipt/")) {
                 isPublicRoute = true;
             }
         } else if ("POST".equalsIgnoreCase(method)) {
