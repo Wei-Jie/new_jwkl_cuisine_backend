@@ -166,6 +166,69 @@ public class OrderController {
     }
 
     /**
+     * 公開免驗證：訂單對帳單查詢 (安全遮蔽顧客敏感資訊)
+     */
+    @GetMapping("/receipt/{orderId}")
+    public ResponseEntity<?> getReceiptDetail(@PathVariable String orderId) {
+        try {
+            Optional<Order> orderOpt = orderRepository.findByOrderId(orderId.trim());
+            if (orderOpt.isPresent()) {
+                Order order = orderOpt.get();
+                List<OrderItem> details = orderItemRepository.findByOrderId(order.getOrderId());
+                
+                // 安全遮蔽敏感個資，防止洩漏
+                Map<String, Object> safeOrder = new HashMap<>();
+                safeOrder.put("orderId", order.getOrderId());
+                safeOrder.put("orderDate", order.getOrderDate());
+                safeOrder.put("customerName", order.getCustomerName());
+                safeOrder.put("amount", order.getAmount());
+                safeOrder.put("status", order.getStatus());
+                safeOrder.put("deliveryDate", order.getDeliveryDate());
+                safeOrder.put("paymentStatus", order.getPaymentStatus());
+                safeOrder.put("paymentDate", order.getPaymentDate());
+                safeOrder.put("notes", order.getNotes());
+                
+                // 手機遮蔽中間三碼
+                String rawPhone = order.getPhone();
+                if (rawPhone != null && rawPhone.length() >= 7) {
+                    safeOrder.put("phone", rawPhone.substring(0, 4) + "***" + rawPhone.substring(rawPhone.length() - 3));
+                } else {
+                    safeOrder.put("phone", "未留");
+                }
+                
+                // 社交平台與Email遮蔽
+                safeOrder.put("instagram", maskSocial(order.getInstagram()));
+                safeOrder.put("lineId", maskSocial(order.getLineId()));
+                safeOrder.put("facebook", maskSocial(order.getFacebook()));
+                safeOrder.put("email", maskEmail(order.getEmail()));
+                
+                Map<String, Object> response = new HashMap<>();
+                response.put("order", safeOrder);
+                response.put("details", details);
+                return ResponseEntity.ok(response);
+            }
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body("{\"status\":\"error\",\"message\":\"" + e.getMessage() + "\"}");
+        }
+    }
+
+    private String maskSocial(String val) {
+        if (val == null || val.trim().isEmpty()) return "";
+        String s = val.trim();
+        if (s.length() <= 3) return "***";
+        return s.substring(0, 2) + "***" + s.substring(s.length() - 1);
+    }
+
+    private String maskEmail(String val) {
+        if (val == null || val.trim().isEmpty()) return "";
+        String email = val.trim();
+        int atIdx = email.indexOf("@");
+        if (atIdx <= 1) return "***";
+        return email.substring(0, 2) + "***" + email.substring(atIdx);
+    }
+
+    /**
      * 後台管理：批次更新排單項目製作狀態 (待製作 -> 製作中 -> 已完成)
      * 支援悲觀鎖高併發控制與庫存智慧扣減/退回
      */
