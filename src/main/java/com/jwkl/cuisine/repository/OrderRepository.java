@@ -23,12 +23,12 @@ public interface OrderRepository extends JpaRepository<Order, Integer> {
     // 依據狀態查詢 (待確認/已接單)
     List<Order> findByStatusOrderByCreatedAtDesc(String status);
 
-    // 依據條件過濾查詢 (支援狀態與訂單日期起迄，訂單編號降序排序)
+    // 依據條件過濾查詢 (支援狀態與訂單日期起迄，訂單編號升序排序)
     @Query("SELECT o FROM Order o WHERE " +
            "(:status IS NULL OR o.status = :status) AND " +
            "(:startDate IS NULL OR o.orderDate >= :startDate) AND " +
            "(:endDate IS NULL OR o.orderDate <= :endDate) " +
-           "ORDER BY o.orderId DESC")
+           "ORDER BY o.orderId ASC")
     List<Order> findOrdersByFilters(
             @Param("status") String status,
             @Param("startDate") String startDate,
