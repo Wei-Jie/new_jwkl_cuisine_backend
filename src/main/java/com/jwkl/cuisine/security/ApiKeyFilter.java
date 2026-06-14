@@ -36,11 +36,15 @@ public class ApiKeyFilter implements Filter {
                 path.equals("/api/v1/menus") || 
                 path.equals("/api/v1/system-configs") || 
                 path.equals("/api/v1/orders/track") ||
-                path.startsWith("/api/v1/orders/receipt/")) {
+                path.startsWith("/api/v1/orders/receipt/") ||
+                path.equals("/api/v1/posts") ||
+                path.startsWith("/api/v1/posts/") ||
+                path.startsWith("/api/v1/comments/post/")) {
                 isPublicRoute = true;
             }
         } else if ("POST".equalsIgnoreCase(method)) {
-            if (path.equals("/api/v1/orders")) {
+            if (path.equals("/api/v1/orders") ||
+                path.startsWith("/api/v1/comments/post/")) {
                 isPublicRoute = true;
             }
         }
