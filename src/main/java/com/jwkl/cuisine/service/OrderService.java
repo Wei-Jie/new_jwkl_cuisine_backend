@@ -193,14 +193,23 @@ public class OrderService {
      * 後台管理：批量保存/更新訂單的品項明細 (從 Controller 移轉，獲得 100% 交易 rollback 保障)
      */
     @Transactional
-    public void updateOrderItems(String orderId, List<OrderItem> items) {
+    public void updateOrderItems(String orderId, String nextStatus, List<OrderItem> items) {
         // 1. 【Undo 撤銷步驟】：先讀取資料庫中該訂單現存的明細
         List<OrderItem> existingItems = orderItemRepository.findByOrderId(orderId);
         
-        // 查找母訂單原本的狀態。若原本已出貨或已結單，代表實體庫存早已扣除，無需再進行可用庫存校驗
+        // 建立舊明細已完成數量 Map，供計算淨增量使用
+        java.util.Map<String, Integer> oldCompletedMap = new java.util.HashMap<>();
+        for (OrderItem oi : existingItems) {
+            if ("已完成".equals(oi.getItemStatus())) {
+                oldCompletedMap.put(oi.getProductId(), oldCompletedMap.getOrDefault(oi.getProductId(), 0) + oi.getQty());
+            }
+        }
+        
+        // 查找母訂單原本的狀態與即將變更的新狀態。若原本或新狀態已出貨或已結單，代表實體庫存早已扣除或即將扣除，無需再進行可用庫存校驗
         Optional<Order> orderOpt = orderRepository.findByOrderId(orderId);
         String orderStatus = orderOpt.isPresent() ? orderOpt.get().getStatus() : "待確認";
-        boolean skipStockCheck = "已出貨".equals(orderStatus) || "已結單".equals(orderStatus);
+        boolean skipStockCheck = "已出貨".equals(orderStatus) || "已結單".equals(orderStatus)
+                || "已出貨".equals(nextStatus) || "已結單".equals(nextStatus);
         
         // 安全刪除該訂單原明細，並立即 Flush 同步至資料庫以讓後續 native query 不受舊明細干擾
         orderItemRepository.deleteAll(existingItems);
@@ -216,18 +225,23 @@ public class OrderService {
             
             // 如果新明細狀態是已完成，且非折扣商品，啟用庫存管理，且非已出貨/已結單狀態，則進行防呆
             if ("已完成".equals(item.getItemStatus()) && !"PROD_DISCOUNT".equals(item.getProductId()) && !skipStockCheck) {
-                Optional<Menu> menuOpt = menuRepository.findByProductIdForUpdate(item.getProductId()); // 悲觀鎖
-                if (menuOpt.isPresent()) {
-                    Menu menu = menuOpt.get();
-                    if (menu.getIsStockManaged()) {
-                        int otherResStock = orderItemRepository.getReservedStockByProductId(item.getProductId());
-                        int newlyCompleted = newlyCompletedMap.getOrDefault(item.getProductId(), 0);
-                        int currentFreeStock = menu.getStock() - (otherResStock + newlyCompleted);
-                        
-                        if (currentFreeStock - item.getQty() < 0) {
-                            throw new IllegalArgumentException("儲存失敗！品項「" + menu.getName() + "」自由可用庫存不足（目前僅剩 " + currentFreeStock + "，欲完成 " + item.getQty() + "）。請先補足庫存！");
+                int oldQty = oldCompletedMap.getOrDefault(item.getProductId(), 0);
+                int netIncrease = Math.max(0, item.getQty() - oldQty);
+                
+                if (netIncrease > 0) {
+                    Optional<Menu> menuOpt = menuRepository.findByProductIdForUpdate(item.getProductId()); // 悲觀鎖
+                    if (menuOpt.isPresent()) {
+                        Menu menu = menuOpt.get();
+                        if (menu.getIsStockManaged()) {
+                            int otherResStock = orderItemRepository.getReservedStockByProductId(item.getProductId());
+                            int newlyCompleted = newlyCompletedMap.getOrDefault(item.getProductId(), 0);
+                            int currentFreeStock = menu.getStock() - (otherResStock + newlyCompleted);
+                            
+                            if (currentFreeStock - netIncrease < 0) {
+                                throw new IllegalArgumentException("儲存失敗！品項「" + menu.getName() + "」自由可用庫存不足（目前僅剩 " + currentFreeStock + "，欲完成 " + netIncrease + "）。請先補足庫存！");
+                            }
+                            newlyCompletedMap.put(item.getProductId(), newlyCompleted + netIncrease);
                         }
-                        newlyCompletedMap.put(item.getProductId(), newlyCompleted + item.getQty());
                     }
                 }
             }

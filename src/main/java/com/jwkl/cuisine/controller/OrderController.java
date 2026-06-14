@@ -266,9 +266,12 @@ public class OrderController {
      * 支援 Undo-Redo 自動化庫存配銷校正與悲觀鎖硬限制防呆
      */
     @PutMapping("/{orderId}/items")
-    public ResponseEntity<?> updateOrderItems(@PathVariable String orderId, @RequestBody List<OrderItem> items) {
+    public ResponseEntity<?> updateOrderItems(
+            @PathVariable String orderId, 
+            @RequestParam(value = "nextStatus", required = false) String nextStatus,
+            @RequestBody List<OrderItem> items) {
         try {
-            orderService.updateOrderItems(orderId, items);
+            orderService.updateOrderItems(orderId, nextStatus, items);
             return ResponseEntity.ok("{\"status\":\"success\",\"message\":\"訂單明細更新成功！\"}");
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body("{\"status\":\"error\",\"message\":\"" + e.getMessage() + "\"}");
