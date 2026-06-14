@@ -56,8 +56,8 @@ public class UploadController {
             }
             long timestamp = Instant.now().getEpochSecond();
             
-            // 清理檔名中可能的不安全字元，保留英數底線與中文字
-            String cleanedName = name.replaceAll("[^a-zA-Z0-9_\\u4e00-\\u9fa5]", "_");
+            // 2. 清理檔名中可能的不安全字元，僅保留英數字與底線 (Supabase Storage 限制檔案 Key 僅能使用 ASCII 字元)
+            String cleanedName = name.replaceAll("[^a-zA-Z0-9_]", "_").replaceAll("_+", "_");
             String uniqueFileName = cleanedName + "_" + timestamp + ext;
 
             log.info("開始上傳檔案到 Supabase Storage: {}, 大小: {} bytes", uniqueFileName, file.getSize());
