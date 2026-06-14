@@ -197,6 +197,11 @@ public class OrderService {
         // 1. 【Undo 撤銷步驟】：先讀取資料庫中該訂單現存的明細
         List<OrderItem> existingItems = orderItemRepository.findByOrderId(orderId);
         
+        // 查找母訂單原本的狀態。若原本已出貨或已結單，代表實體庫存早已扣除，無需再進行可用庫存校驗
+        Optional<Order> orderOpt = orderRepository.findByOrderId(orderId);
+        String orderStatus = orderOpt.isPresent() ? orderOpt.get().getStatus() : "待確認";
+        boolean skipStockCheck = "已出貨".equals(orderStatus) || "已結單".equals(orderStatus);
+        
         // 安全刪除該訂單原明細，並立即 Flush 同步至資料庫以讓後續 native query 不受舊明細干擾
         orderItemRepository.deleteAll(existingItems);
         orderItemRepository.flush();
@@ -209,8 +214,8 @@ public class OrderService {
             item.setOrderId(orderId);
             item.setId(null); // 重設 ID 交由資料庫自增
             
-            // 如果新明細狀態是已完成，且非折扣商品，啟用庫存管理，則進行防呆
-            if ("已完成".equals(item.getItemStatus()) && !"PROD_DISCOUNT".equals(item.getProductId())) {
+            // 如果新明細狀態是已完成，且非折扣商品，啟用庫存管理，且非已出貨/已結單狀態，則進行防呆
+            if ("已完成".equals(item.getItemStatus()) && !"PROD_DISCOUNT".equals(item.getProductId()) && !skipStockCheck) {
                 Optional<Menu> menuOpt = menuRepository.findByProductIdForUpdate(item.getProductId()); // 悲觀鎖
                 if (menuOpt.isPresent()) {
                     Menu menu = menuOpt.get();
