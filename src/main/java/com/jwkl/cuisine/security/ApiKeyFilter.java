@@ -44,7 +44,8 @@ public class ApiKeyFilter implements Filter {
             }
         } else if ("POST".equalsIgnoreCase(method)) {
             if (path.equals("/api/v1/orders") ||
-                path.startsWith("/api/v1/comments/post/")) {
+                path.startsWith("/api/v1/comments/post/") ||
+                (path.startsWith("/api/v1/posts/") && path.endsWith("/view"))) {
                 isPublicRoute = true;
             }
         }

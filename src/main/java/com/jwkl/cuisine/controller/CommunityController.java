@@ -180,4 +180,20 @@ public class CommunityController {
         }
         return request.getRemoteAddr();
     }
+
+    /**
+     * 前台：增加文章瀏覽數 (POST /api/v1/posts/{id}/view)
+     */
+    @PostMapping("/posts/{id}/view")
+    public ResponseEntity<?> incrementPostViews(@PathVariable Integer id) {
+        try {
+            communityService.incrementViews(id);
+            Map<String, String> response = new HashMap<>();
+            response.put("status", "success");
+            response.put("message", "瀏覽數已累加");
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("{\"status\":\"error\",\"message\":\"" + e.getMessage() + "\"}");
+        }
+    }
 }

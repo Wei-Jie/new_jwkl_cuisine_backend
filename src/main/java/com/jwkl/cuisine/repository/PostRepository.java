@@ -19,4 +19,8 @@ public interface PostRepository extends JpaRepository<Post, Integer> {
 
     // 後台管理：查詢所有文章（不論草稿或發布，降序排列）
     List<Post> findAllByOrderByCreatedAtDesc();
+
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Query("UPDATE Post p SET p.views = p.views + 1 WHERE p.id = :id")
+    void incrementViews(@org.springframework.data.repository.query.Param("id") Integer id);
 }

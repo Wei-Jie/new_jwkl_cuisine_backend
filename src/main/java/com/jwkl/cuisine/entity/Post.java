@@ -40,4 +40,7 @@ public class Post {
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private LocalDateTime updatedAt;
+
+    @Column(name = "views", nullable = false)
+    private Integer views = 0;
 }

@@ -161,4 +161,12 @@ public class CommunityService {
         }
         throw new IllegalArgumentException("找不到此留言，ID: " + commentId);
     }
+
+    /**
+     * 前台：增加文章瀏覽數
+     */
+    @Transactional
+    public void incrementViews(Integer id) {
+        postRepository.incrementViews(id);
+    }
 }
