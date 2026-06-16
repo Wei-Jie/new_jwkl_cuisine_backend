@@ -31,6 +31,9 @@ public class CommunityService {
     @Autowired
     private WebPushService webPushService;
 
+    @org.springframework.beans.factory.annotation.Value("${FRONTEND_URL:}")
+    private String frontendUrl;
+
     private boolean isConfigEnabled(String key, boolean defaultValue) {
         return systemConfigRepository.findByConfigKey(key)
                 .map(config -> "true".equalsIgnoreCase(config.getConfigValue().trim()))
@@ -161,7 +164,15 @@ public class CommunityService {
                 String content = savedComment.getCommentText();
 
                 // 1. 發送 Telegram 通知
-                String tgMessage = String.format("\n💬【小灶私廚】灶下動態有新留言！\n=========================\n 文章標題：%s\n 留言暱稱：%s\n 留言內容：%s\n=========================", postTitle, author, content);
+                String base = (frontendUrl == null || frontendUrl.trim().isEmpty() || "*".equals(frontendUrl.trim()))
+                        ? "https://new-jwkl-cuisine.vercel.app"
+                        : frontendUrl.trim();
+                if (base.endsWith("/")) {
+                    base = base.substring(0, base.length() - 1);
+                }
+                String manageUrl = base + "/admin?tab=community";
+
+                String tgMessage = String.format("\n💬【小灶私廚】灶下動態有新留言！\n=========================\n 文章標題：%s\n 留言暱稱：%s\n 留言內容：%s\n=========================\n👉 點此進入後台管理留言：\n%s", postTitle, author, content, manageUrl);
                 lineNotifyService.sendTelegramMessage(tgMessage);
 
                 // 2. 發送 Web Push 通知 (VAPID 方案)
