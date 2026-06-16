@@ -25,6 +25,12 @@ public class CommunityService {
     @Autowired
     private SystemConfigRepository systemConfigRepository;
 
+    @Autowired
+    private LineNotifyService lineNotifyService;
+
+    @Autowired
+    private WebPushService webPushService;
+
     private boolean isConfigEnabled(String key, boolean defaultValue) {
         return systemConfigRepository.findByConfigKey(key)
                 .map(config -> "true".equalsIgnoreCase(config.getConfigValue().trim()))
@@ -145,7 +151,30 @@ public class CommunityService {
 
         comment.setPostId(postId);
         comment.setStatus("APPROVED"); // 預設審核通過
-        return postCommentRepository.save(comment);
+        PostComment savedComment = postCommentRepository.save(comment);
+
+        // 異步發送通知，確保前台發表留言不延遲
+        new Thread(() -> {
+            try {
+                String postTitle = postOpt.get().getTitle();
+                String author = savedComment.getNickName();
+                String content = savedComment.getCommentText();
+
+                // 1. 發送 Telegram 通知
+                String tgMessage = String.format("\n💬【小灶私廚】灶下動態有新留言！\n=========================\n 文章標題：%s\n 留言暱稱：%s\n 留言內容：%s\n=========================", postTitle, author, content);
+                lineNotifyService.sendTelegramMessage(tgMessage);
+
+                // 2. 發送 Web Push 通知 (VAPID 方案)
+                String pushTitle = "💬 灶下動態有新留言！";
+                String pushMessage = String.format("「%s」在文章《%s》留言了：%s", author, postTitle, content);
+                String clickAction = "/admin?tab=community";
+                webPushService.sendPushNotification(pushTitle, pushMessage, clickAction);
+            } catch (Exception e) {
+                System.err.println("[新留言通知] 異步發送通知異常: " + e.getMessage());
+            }
+        }).start();
+
+        return savedComment;
     }
 
     /**

@@ -53,4 +53,30 @@ public class SystemConfigController {
             return ResponseEntity.ok(saved);
         }
     }
+
+    @Autowired
+    private com.jwkl.cuisine.service.WebPushService webPushService;
+
+    /**
+     * 獲取 Web Push VAPID 公鑰 (前台/後台共用)
+     */
+    @GetMapping("/web-push/public-key")
+    public ResponseEntity<java.util.Map<String, String>> getWebPushPublicKey() {
+        java.util.Map<String, String> result = new java.util.HashMap<>();
+        result.put("publicKey", webPushService.getPublicKey());
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * 訂閱 Web Push 推送 (後台管理員註冊)
+     */
+    @PostMapping("/web-push/subscribe")
+    public ResponseEntity<java.util.Map<String, Object>> subscribeWebPush(
+            @RequestBody com.jwkl.cuisine.service.WebPushService.WebPushSubscription subscription) {
+        webPushService.subscribe(subscription);
+        java.util.Map<String, Object> result = new java.util.HashMap<>();
+        result.put("success", true);
+        result.put("message", "訂閱成功");
+        return ResponseEntity.ok(result);
+    }
 }

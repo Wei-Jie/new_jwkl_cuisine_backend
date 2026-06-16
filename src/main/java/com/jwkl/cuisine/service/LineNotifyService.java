@@ -140,7 +140,7 @@ public class LineNotifyService {
     /**
      * 管道 A: Telegram Bot 免費推播實作
      */
-    private void sendTelegramMessage(String text) {
+    public void sendTelegramMessage(String text) {
         try {
             String url = "https://api.telegram.org/bot" + telegramBotToken.trim() + "/sendMessage";
             

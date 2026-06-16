@@ -132,28 +132,27 @@ public class OrderService {
         try {
             emailService.sendOrderNotificationEmail(savedOrder, savedDetails, "CREATED");
         } catch (Exception e) {
-            System.err.println("[Email 寄送] 異步發送訂單確認信異常: " + e.getMessage());
+            System.err.println("[Email 寄送] 異步發送通知信異常: " + e.getMessage());
         }
 
         return savedOrder;
     }
 
     /**
-     * 訂單追蹤功能 (依據電話與訂單號)
+     * 顧客訂單進度追蹤
      */
     public Optional<Order> trackOrder(String phone, String orderId) {
         return orderRepository.findByPhoneAndOrderId(phone, orderId);
     }
 
-    /**
-     * 後台管理：批次更新排單項目狀態 (從 Controller 移轉，獲得 100% 交易 rollback 保障)
-     */
     @Transactional
     public void batchUpdateItemStatus(List<Integer> ids, String newStatus) {
         List<OrderItem> items = orderItemRepository.findAllById(ids);
         
         // 用於本批次更新中累計新增已完成品項數量，防止同商品多筆明細併發防爆防禦失效
         java.util.Map<String, Integer> newlyCompletedQtyMap = new java.util.HashMap<>();
+        // 用於暫存同商品在資料庫中的原始預約保留數量，避免因為 Native Query 的 Auto-Flush 導致重複計算
+        java.util.Map<String, Integer> originalResStockMap = new java.util.HashMap<>();
         
         for (OrderItem item : items) {
             String oldStatus = item.getItemStatus();
@@ -172,14 +171,16 @@ public class OrderService {
                         
                         if (!isOldCompleted && isNewCompleted) {
                             // 待製作/製作中 -> 已完成：檢查「可用自由庫存」是否充足
-                            int currentResStock = orderItemRepository.getReservedStockByProductId(item.getProductId());
-                            int newlyCompleted = newlyCompletedQtyMap.getOrDefault(item.getProductId(), 0);
+                            String productId = item.getProductId();
+                            int currentResStock = originalResStockMap.computeIfAbsent(productId, 
+                                    id -> orderItemRepository.getReservedStockByProductId(id));
+                            int newlyCompleted = newlyCompletedQtyMap.getOrDefault(productId, 0);
                             int currentFreeStock = menu.getStock() - (currentResStock + newlyCompleted);
                             
                             if (currentFreeStock - item.getQty() < 0) {
                                 throw new IllegalArgumentException("儲存失敗！品項「" + menu.getName() + "」自由可用庫存不足（目前僅剩 " + currentFreeStock + "，欲完成 " + item.getQty() + "）。請先補足庫存！");
                             }
-                            newlyCompletedQtyMap.put(item.getProductId(), newlyCompleted + item.getQty());
+                            newlyCompletedQtyMap.put(productId, newlyCompleted + item.getQty());
                         }
                     }
                 }
