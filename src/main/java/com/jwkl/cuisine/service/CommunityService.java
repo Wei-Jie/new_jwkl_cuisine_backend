@@ -170,7 +170,7 @@ public class CommunityService {
                 if (base.endsWith("/")) {
                     base = base.substring(0, base.length() - 1);
                 }
-                String manageUrl = base + "/admin?tab=community";
+                String manageUrl = base + "/#/admin-portal-xyz?tab=community";
 
                 String tgMessage = String.format("\n💬【小灶私廚】灶下動態有新留言！\n=========================\n 文章標題：%s\n 留言暱稱：%s\n 留言內容：%s\n=========================\n👉 點此進入後台管理留言：\n%s", postTitle, author, content, manageUrl);
                 lineNotifyService.sendTelegramMessage(tgMessage);
@@ -178,7 +178,7 @@ public class CommunityService {
                 // 2. 發送 Web Push 通知 (VAPID 方案)
                 String pushTitle = "💬 灶下動態有新留言！";
                 String pushMessage = String.format("「%s」在文章《%s》留言了：%s", author, postTitle, content);
-                String clickAction = "/admin?tab=community";
+                String clickAction = "/#/admin-portal-xyz?tab=community";
                 webPushService.sendPushNotification(pushTitle, pushMessage, clickAction);
             } catch (Exception e) {
                 System.err.println("[新留言通知] 異步發送通知異常: " + e.getMessage());
