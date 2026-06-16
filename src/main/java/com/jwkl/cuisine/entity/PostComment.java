@@ -27,6 +27,7 @@ public class PostComment {
     @Column(name = "ip_address", length = 50)
     private String ipAddress; // 留言者 IP 位址 (防範騷擾)
 
-    @Column(name = "created_at", insertable = false, updatable = false)
-    private LocalDateTime createdAt;
+    @com.fasterxml.jackson.annotation.JsonFormat(shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", timezone = "UTC")
+    @Column(name = "created_at")
+    private java.time.Instant createdAt;
 }

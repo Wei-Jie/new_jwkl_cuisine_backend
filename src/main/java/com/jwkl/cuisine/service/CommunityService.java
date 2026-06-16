@@ -154,6 +154,7 @@ public class CommunityService {
 
         comment.setPostId(postId);
         comment.setStatus("APPROVED"); // 預設審核通過
+        comment.setCreatedAt(java.time.Instant.now());
         PostComment savedComment = postCommentRepository.save(comment);
 
         // 異步發送通知，確保前台發表留言不延遲
