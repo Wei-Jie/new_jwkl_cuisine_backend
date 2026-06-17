@@ -107,6 +107,11 @@ public class OrderService {
             detail.setProductTotalAmt(item.getProduct_amt().multiply(BigDecimal.valueOf(item.getQty())));
             detail.setItemStatus("待製作");
             
+            // 方案 B：自動查表儲存當下品名快照
+            String pName = "PROD_DISCOUNT".equals(item.getProduct_id()) ? "🎁 折扣折抵" : 
+                menuRepository.findById(item.getProduct_id()).map(Menu::getName).orElse(item.getProduct_id());
+            detail.setProductName(pName);
+            
             OrderItem savedDetail = orderItemRepository.save(detail);
             savedDetails.add(savedDetail);
         }
@@ -223,6 +228,13 @@ public class OrderService {
         for (OrderItem item : items) {
             item.setOrderId(orderId);
             item.setId(null); // 重設 ID 交由資料庫自增
+            
+            // 方案 B：若前端未傳入 productName，由後端防禦性自動查表補齊
+            if (item.getProductName() == null || item.getProductName().trim().isEmpty()) {
+                String pName = "PROD_DISCOUNT".equals(item.getProductId()) ? "🎁 折扣折抵" : 
+                    menuRepository.findById(item.getProductId()).map(Menu::getName).orElse(item.getProductId());
+                item.setProductName(pName);
+            }
             
             // 如果新明細狀態是已完成，且非折扣商品，啟用庫存管理，且非已出貨/已結單狀態，則進行防呆
             if ("已完成".equals(item.getItemStatus()) && !"PROD_DISCOUNT".equals(item.getProductId()) && !skipStockCheck) {

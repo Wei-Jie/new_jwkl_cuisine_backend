@@ -28,6 +28,9 @@ public class OrderItem {
     @Column(name = "product_total_amt", nullable = false, precision = 10, scale = 2)
     private BigDecimal productTotalAmt; // 當下品項小計 (qty * productAmt)
 
+    @Column(name = "product_name", nullable = false, length = 100)
+    private String productName; // 當下商品品名快照
+
     @Column(name = "item_status", length = 20)
     private String itemStatus = "待製作"; // 單一品項製作狀態 (待製作/製作中/已完成)
 

@@ -17,12 +17,11 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Integer> {
      */
     @org.springframework.data.jpa.repository.Query(value = 
         "SELECT oi.id AS id, o.order_id AS \"orderId\", o.order_date AS \"orderDate\", " +
-        "o.customer_name AS \"customerName\", m.name AS \"itemName\", oi.qty AS qty, " +
+        "o.customer_name AS \"customerName\", oi.product_name AS \"itemName\", oi.qty AS qty, " +
         "oi.product_amt AS \"unitPrice\", oi.product_total_amt AS subtotal, oi.item_status AS status " +
         "FROM order_items oi " +
         "JOIN orders o ON oi.order_id = o.order_id " +
-        "JOIN menus m ON oi.product_id = m.product_id " +
-        "WHERE m.name = :menuName AND o.status <> '待確認' AND o.status <> '已出貨' AND o.status <> '已結單' AND o.status <> '已取消' AND o.status <> '已退回' AND (oi.item_status = '待製作' OR oi.item_status = '已完成')", 
+        "WHERE oi.product_name = :menuName AND o.status <> '待確認' AND o.status <> '已出貨' AND o.status <> '已結單' AND o.status <> '已取消' AND o.status <> '已退回' AND (oi.item_status = '待製作' OR oi.item_status = '已完成')", 
         nativeQuery = true)
     List<java.util.Map<String, Object>> findScheduleMgmtByItem(@org.springframework.data.repository.query.Param("menuName") String menuName);
 
