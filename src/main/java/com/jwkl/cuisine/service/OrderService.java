@@ -293,6 +293,15 @@ public class OrderService {
             }
             Order saved = orderRepository.save(dbOrder);
             
+            // 若訂單改為已出貨或已結單，同步將底下的品項明細狀態更新為「已完成」
+            if ("已出貨".equals(newStatus) || "已結單".equals(newStatus)) {
+                List<OrderItem> items = orderItemRepository.findByOrderId(orderId);
+                for (OrderItem item : items) {
+                    item.setItemStatus("已完成");
+                }
+                orderItemRepository.saveAll(items);
+            }
+            
             // 檢查是否從未出貨轉換為已出貨/已結單
             boolean isOldDelivered = "已出貨".equals(oldStatus) || "已結單".equals(oldStatus);
             boolean isNewDelivered = "已出貨".equals(newStatus) || "已結單".equals(newStatus);
@@ -323,6 +332,15 @@ public class OrderService {
             
             order.setStatus(status);
             Order saved = orderRepository.save(order);
+            
+            // 若訂單改為已出貨或已結單，同步將底下的品項明細狀態更新為「已完成」
+            if ("已出貨".equals(status) || "已結單".equals(status)) {
+                List<OrderItem> items = orderItemRepository.findByOrderId(orderId);
+                for (OrderItem item : items) {
+                    item.setItemStatus("已完成");
+                }
+                orderItemRepository.saveAll(items);
+            }
             
             boolean isOldDelivered = "已出貨".equals(oldStatus) || "已結單".equals(oldStatus);
             boolean isNewDelivered = "已出貨".equals(status) || "已結單".equals(status);
