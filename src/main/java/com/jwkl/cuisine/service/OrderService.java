@@ -356,13 +356,12 @@ public class OrderService {
             throw new IllegalArgumentException("找不到此訂單: " + orderId);
         }
     }
-
     /**
      * 輔助方法：當主訂單出貨/退回狀態時，連動實體總庫存 (all_stock)
      */
     private void adjustPhysicalStockOnStatusChange(String orderId, String oldStatus, String newStatus) {
-        boolean isOldDelivered = "已出貨".equals(oldStatus) || "已結單".equals(oldStatus) || "已完成".equals(oldStatus);
-        boolean isNewDelivered = "已出貨".equals(newStatus) || "已結單".equals(newStatus) || "已完成".equals(newStatus);
+        boolean isOldDelivered = "已出貨".equals(oldStatus) || "已結單".equals(oldStatus);
+        boolean isNewDelivered = "已出貨".equals(newStatus) || "已結單".equals(newStatus);
         
         if (isOldDelivered == isNewDelivered) {
             return; // 狀態未發生「出貨與否」的跨邊界變更，不異動總庫存
