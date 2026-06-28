@@ -361,59 +361,63 @@ public class OrderService {
      * 輔助方法：當主訂單出貨/退回狀態時，連動實體總庫存 (all_stock)
      */
     private void adjustPhysicalStockOnStatusChange(String orderId, String oldStatus, String newStatus) {
-        boolean isOldDelivered = "已出貨".equals(oldStatus) || "已結單".equals(oldStatus);
-        boolean isNewDelivered = "已出貨".equals(newStatus) || "已結單".equals(newStatus);
+        boolean isOldDelivered = "已出貨".equals(oldStatus) || "已結單".equals(oldStatus) || "已完成".equals(oldStatus);
+        boolean isNewDelivered = "已出貨".equals(newStatus) || "已結單".equals(newStatus) || "已完成".equals(newStatus);
         
         if (isOldDelivered == isNewDelivered) {
             return; // 狀態未發生「出貨與否」的跨邊界變更，不異動總庫存
         }
         
         List<OrderItem> items = orderItemRepository.findByOrderId(orderId);
-        // 用於累計本訂單內扣除的同商品數量，防止併發扣庫存防爆防禦失效
-        java.util.Map<String, Integer> newlyReducedMap = new java.util.HashMap<>();
         
+        // 1. 先按商品 ID 分組並加總本訂單欲出貨的數量 (排除折扣)
+        java.util.Map<String, Integer> productQtyMap = new java.util.HashMap<>();
         for (OrderItem item : items) {
-            // 💡 關鍵修正：跳過折扣品項即可，不論明細狀態為何，只要出貨就必須扣減實體總庫存
             if ("PROD_DISCOUNT".equals(item.getProductId())) {
                 continue;
             }
+            productQtyMap.put(item.getProductId(), productQtyMap.getOrDefault(item.getProductId(), 0) + item.getQty());
+        }
+        
+        // 2. 針對分組後的商品，進行一次性校驗與實體庫存扣減
+        for (java.util.Map.Entry<String, Integer> entry : productQtyMap.entrySet()) {
+            String productId = entry.getKey();
+            int orderQty = entry.getValue();
             
-            Optional<Menu> menuOpt = menuRepository.findByProductIdForUpdate(item.getProductId()); // 悲觀寫入鎖
+            Optional<Menu> menuOpt = menuRepository.findByProductIdForUpdate(productId); // 悲觀寫入鎖
             if (menuOpt.isPresent()) {
                 Menu menu = menuOpt.get();
                 if (menu.getIsStockManaged()) {
                     if (isNewDelivered) {
-                        // 1. 取得該商品的總預約保留數量 (所有未出貨且已完成的明細之和)
-                        int totalReserved = orderItemRepository.getReservedStockByProductId(item.getProductId());
+                        // 取得所有未出貨之預約保留總量
+                        int totalReserved = orderItemRepository.getReservedStockByProductId(productId);
                         
-                        // 2. 計算本訂單中該商品已完成的數量 (應從總預約保留中排除，以防重複計算本訂單自身)
+                        // 計算本訂單自身已佔用的保留量
                         int thisOrderCompleted = 0;
                         for (OrderItem existingItem : items) {
-                            if (existingItem.getProductId().equals(item.getProductId()) 
+                            if (existingItem.getProductId().equals(productId) 
                                     && "已完成".equals(existingItem.getItemStatus())) {
                                 thisOrderCompleted += existingItem.getQty();
                             }
                         }
                         
-                        // 3. 計算其他訂單佔用的預約保留庫存
+                        // 扣除本訂單，得到其他訂單占用的保留量
                         int otherReserved = Math.max(0, totalReserved - thisOrderCompleted);
                         
-                        // 4. 計算本訂單出貨時可動用的自由庫存
-                        int alreadyReduced = newlyReducedMap.getOrDefault(item.getProductId(), 0);
-                        int availableFreeStock = menu.getStock() - otherReserved - alreadyReduced;
+                        // 可動用的自由庫存
+                        int availableFreeStock = menu.getStock() - otherReserved;
                         
-                        if (availableFreeStock - item.getQty() < 0) {
+                        if (availableFreeStock - orderQty < 0) {
                             throw new IllegalArgumentException("儲存失敗！品項「" + menu.getName() 
                                     + "」可用自由庫存不足（總庫存 " + menu.getStock() 
                                     + "，需保留給其他訂單 " + otherReserved 
-                                    + "，本次欲出貨 " + item.getQty() 
+                                    + "，本次欲出貨 " + orderQty 
                                     + "，剩餘可用僅 " + (menu.getStock() - otherReserved) + "）。請先補足庫存！");
                         }
                         
-                        menu.setStock(menu.getStock() - item.getQty());
-                        newlyReducedMap.put(item.getProductId(), alreadyReduced + item.getQty());
+                        menu.setStock(menu.getStock() - orderQty);
                     } else {
-                        menu.setStock(menu.getStock() + item.getQty());
+                        menu.setStock(menu.getStock() + orderQty);
                     }
                     menuRepository.save(menu);
                 }
