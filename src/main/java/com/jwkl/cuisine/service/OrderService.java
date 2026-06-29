@@ -55,6 +55,13 @@ public class OrderService {
         private String notes;
         private BigDecimal amount;
         private List<OrderItemRequest> items;
+        // 配送相關欄位（選填，僅 SHIPPING_ENABLED=true 時前台會傳入）
+        private String shipping_method;    // 'face_to_face' | 'home_delivery' | 'store_pickup'
+        private String shipping_carrier;   // 'black_cat' | 'seven_eleven'
+        private String recipient_name;     // 收件人姓名
+        private String recipient_phone;    // 收件人電話
+        private String recipient_address;  // 收件地址（宅配用）
+        private String store_name;         // 門市名稱（店到店用）或面交地點
     }
 
     @Data
@@ -92,7 +99,15 @@ public class OrderService {
         order.setDeliveryDate(request.getDelivery_date());
         order.setNotes(request.getNotes());
         order.setEmail(request.getEmail());
-        
+
+        // 儲存配送資訊（如果前台有傳入）
+        if (request.getShipping_method() != null) order.setShippingMethod(request.getShipping_method());
+        if (request.getShipping_carrier() != null) order.setShippingCarrier(request.getShipping_carrier());
+        if (request.getRecipient_name() != null) order.setRecipientName(request.getRecipient_name());
+        if (request.getRecipient_phone() != null) order.setRecipientPhone(request.getRecipient_phone());
+        if (request.getRecipient_address() != null) order.setRecipientAddress(request.getRecipient_address());
+        if (request.getStore_name() != null) order.setStoreName(request.getStore_name());
+
         Order savedOrder = orderRepository.save(order);
 
         // 4. 儲存訂單明細品項 (JPA 關聯寫入)
@@ -285,8 +300,20 @@ public class OrderService {
             dbOrder.setNotes(updatedOrder.getNotes());
             dbOrder.setInstagram(updatedOrder.getInstagram());
             dbOrder.setLineId(updatedOrder.getLineId());
-            dbOrder.setFacebook(updatedOrder.getFacebook());
             dbOrder.setEmail(updatedOrder.getEmail());
+            
+            // 複製配送相關欄位
+            dbOrder.setShippingMethod(updatedOrder.getShippingMethod());
+            dbOrder.setShippingCarrier(updatedOrder.getShippingCarrier());
+            dbOrder.setShippingBoxId(updatedOrder.getShippingBoxId());
+            dbOrder.setShippingFee(updatedOrder.getShippingFee());
+            dbOrder.setRecipientName(updatedOrder.getRecipientName());
+            dbOrder.setRecipientPhone(updatedOrder.getRecipientPhone());
+            dbOrder.setRecipientAddress(updatedOrder.getRecipientAddress());
+            dbOrder.setStoreName(updatedOrder.getStoreName());
+            dbOrder.setStoreId(updatedOrder.getStoreId());
+            dbOrder.setTrackingNumber(updatedOrder.getTrackingNumber());
+
             
             if (updatedOrder.getAmount() != null) {
                 dbOrder.setAmount(updatedOrder.getAmount());

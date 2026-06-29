@@ -35,6 +35,20 @@ public class SystemConfigController {
     }
 
     /**
+     * 前台公開查詢端點（不需登入），僅回傳 configValue 字串
+     * 用途：前台頁面查詢 SHIPPING_ENABLED 等功能開關
+     */
+    @GetMapping("/public/{key}")
+    public ResponseEntity<java.util.Map<String, String>> getPublicConfigValue(@PathVariable String key) {
+        Optional<SystemConfig> config = systemConfigRepository.findByConfigKey(key);
+        if (config.isPresent()) {
+            return ResponseEntity.ok(java.util.Map.of("value", config.get().getConfigValue()));
+        }
+        return ResponseEntity.ok(java.util.Map.of("value", "false")); // 找不到時預設 false（安全原則）
+    }
+
+
+    /**
      * 新增或更新系統配置 (後台管理)
      */
     @PostMapping

@@ -54,6 +54,37 @@ public class Order {
 
     private String notes; // 顧客備註
 
+    // ===== 配送相關欄位 =====
+    @Column(name = "shipping_method", length = 20)
+    private String shippingMethod; // 'face_to_face' | 'home_delivery' | 'store_pickup'
+
+    @Column(name = "shipping_carrier", length = 20)
+    private String shippingCarrier; // 'black_cat' | 'seven_eleven'
+
+    @Column(name = "shipping_box_id")
+    private Integer shippingBoxId; // FK -> shipping_boxes.id
+
+    @Column(name = "shipping_fee")
+    private Integer shippingFee; // 最終確認運費（元）
+
+    @Column(name = "recipient_name", length = 50)
+    private String recipientName; // 收件人姓名
+
+    @Column(name = "recipient_phone", length = 20)
+    private String recipientPhone; // 收件人電話
+
+    @Column(name = "recipient_address")
+    private String recipientAddress; // 收件地址（宅配用）
+
+    @Column(name = "store_name", length = 100)
+    private String storeName; // 門市/面交地點名稱
+
+    @Column(name = "store_id", length = 20)
+    private String storeId; // 門市代碼（未來 API 串接用）
+
+    @Column(name = "tracking_number", length = 50)
+    private String trackingNumber; // 貨運追蹤號碼
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;
 

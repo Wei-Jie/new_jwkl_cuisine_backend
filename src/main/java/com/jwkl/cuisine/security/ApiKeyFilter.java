@@ -35,11 +35,13 @@ public class ApiKeyFilter implements Filter {
             if (path.equals("/api/v1/faqs") || 
                 path.equals("/api/v1/menus") || 
                 path.equals("/api/v1/system-configs") || 
+                path.startsWith("/api/v1/system-configs/public/") || 
                 path.equals("/api/v1/orders/track") ||
                 path.startsWith("/api/v1/orders/receipt/") ||
                 path.equals("/api/v1/posts") ||
                 path.startsWith("/api/v1/posts/") ||
-                path.startsWith("/api/v1/comments/post/")) {
+                path.startsWith("/api/v1/comments/post/") ||
+                path.equals("/api/v1/shipping/boxes")) {
                 isPublicRoute = true;
             }
         } else if ("POST".equalsIgnoreCase(method)) {

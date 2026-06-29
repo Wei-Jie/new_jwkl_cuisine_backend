@@ -43,6 +43,12 @@ public class Menu {
     @Column(name = "is_stock_managed", nullable = false)
     private Boolean isStockManaged = false; // 是否啟用庫存管理
 
+    @Column(name = "shipping_points")
+    private Integer shippingPoints; // 配送點數（體積指標，NULL=秤重商品由店主出貨時確認）
+
+    @Column(name = "weight_g")
+    private Integer weightG; // 商品重量 (g)，秤重商品可為 NULL
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;
 
