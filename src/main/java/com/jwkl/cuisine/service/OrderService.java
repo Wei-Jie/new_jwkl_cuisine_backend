@@ -14,6 +14,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 @Service
@@ -169,7 +170,7 @@ public class OrderService {
     public void batchUpdateItemStatus(List<Integer> ids, String newStatus) {
         List<OrderItem> items = orderItemRepository.findAllById(ids);
         
-        // 用於本批次更新中累計新增已完成品項數量，防止同商品多筆明細併發防爆防禦失效
+        // 用於本批次更新中累計新增/釋放已完成品項數量，防止同商品多筆明細併發防爆防禦失效
         java.util.Map<String, Integer> newlyCompletedQtyMap = new java.util.HashMap<>();
         // 用於暫存同商品在資料庫中的原始預約保留數量，避免因為 Native Query 的 Auto-Flush 導致重複計算
         java.util.Map<String, Integer> originalResStockMap = new java.util.HashMap<>();
@@ -185,22 +186,40 @@ public class OrderService {
                 Optional<Menu> menuOpt = menuRepository.findByProductIdForUpdate(item.getProductId()); // 悲觀寫入鎖
                 if (menuOpt.isPresent()) {
                     Menu menu = menuOpt.get();
-                    if (menu.getIsStockManaged()) {
+                    if (Boolean.TRUE.equals(menu.getIsStockManaged())) {
                         boolean isOldCompleted = "已完成".equals(oldStatus);
                         boolean isNewCompleted = "已完成".equals(newStatus);
+                        String productId = item.getProductId();
+                        int currentResStock = originalResStockMap.computeIfAbsent(productId, 
+                                id -> orderItemRepository.getReservedStockByProductId(id));
+                        int newlyCompleted = newlyCompletedQtyMap.getOrDefault(productId, 0);
+                        int currentFreeStock = menu.getStock() - (currentResStock + newlyCompleted);
                         
                         if (!isOldCompleted && isNewCompleted) {
                             // 待製作/製作中 -> 已完成：檢查「可用自由庫存」是否充足
-                            String productId = item.getProductId();
-                            int currentResStock = originalResStockMap.computeIfAbsent(productId, 
-                                    id -> orderItemRepository.getReservedStockByProductId(id));
-                            int newlyCompleted = newlyCompletedQtyMap.getOrDefault(productId, 0);
-                            int currentFreeStock = menu.getStock() - (currentResStock + newlyCompleted);
-                            
                             if (currentFreeStock - item.getQty() < 0) {
+                                saveAuditLog("STOCK_RESERVE_FAIL", "ERROR", String.format(
+                                        "排單批次設為已完成失敗 [訂單 %s]：品項 [%s %s] 自由可用庫存不足 (實體庫存 %d, 已保留 %d, 剩餘可用 %d, 欲完成 %d)",
+                                        item.getOrderId(), productId, menu.getName(), menu.getStock(), currentResStock + newlyCompleted, currentFreeStock, item.getQty()
+                                ));
                                 throw new IllegalArgumentException("儲存失敗！品項「" + menu.getName() + "」自由可用庫存不足（目前僅剩 " + currentFreeStock + "，欲完成 " + item.getQty() + "）。請先補足庫存！");
                             }
                             newlyCompletedQtyMap.put(productId, newlyCompleted + item.getQty());
+                            int newResTotal = currentResStock + newlyCompleted + item.getQty();
+                            saveAuditLog("STOCK_RESERVE_CHANGE", "INFO", String.format(
+                                    "排單批次預約保留增加 [訂單 %s]：品項 [%s %s] (數量 %d) 狀態 %s -> %s，總預約保留 %d -> %d (實體庫存 %d, 剩餘可用 %d)",
+                                    item.getOrderId(), productId, menu.getName(), item.getQty(), oldStatus, newStatus,
+                                    currentResStock + newlyCompleted, newResTotal, menu.getStock(), menu.getStock() - newResTotal
+                            ));
+                        } else if (isOldCompleted && !isNewCompleted) {
+                            // 已完成 -> 待製作/製作中：釋放預約保留
+                            newlyCompletedQtyMap.put(productId, newlyCompleted - item.getQty());
+                            int newResTotal = Math.max(0, currentResStock + newlyCompleted - item.getQty());
+                            saveAuditLog("STOCK_RESERVE_CHANGE", "INFO", String.format(
+                                    "排單批次預約保留釋放 [訂單 %s]：品項 [%s %s] (數量 %d) 狀態 %s -> %s，總預約保留 %d -> %d (實體庫存 %d, 剩餘可用 %d)",
+                                    item.getOrderId(), productId, menu.getName(), item.getQty(), oldStatus, newStatus,
+                                    currentResStock + newlyCompleted, newResTotal, menu.getStock(), menu.getStock() - newResTotal
+                            ));
                         }
                     }
                 }
@@ -221,7 +240,7 @@ public class OrderService {
         // 建立舊明細已完成數量 Map，供計算淨增量使用
         java.util.Map<String, Integer> oldCompletedMap = new java.util.HashMap<>();
         for (OrderItem oi : existingItems) {
-            if ("已完成".equals(oi.getItemStatus())) {
+            if ("已完成".equals(oi.getItemStatus()) && !"PROD_DISCOUNT".equals(oi.getProductId())) {
                 oldCompletedMap.put(oi.getProductId(), oldCompletedMap.getOrDefault(oi.getProductId(), 0) + oi.getQty());
             }
         }
@@ -236,8 +255,8 @@ public class OrderService {
         orderItemRepository.deleteAll(existingItems);
         orderItemRepository.flush();
         
-        // 用於本訂單新明細中累計新增已完成品項數量，防止同商品多筆明細併發防爆防禦失效
-        java.util.Map<String, Integer> newlyCompletedMap = new java.util.HashMap<>();
+        // 用於累計本訂單新明細中各商品標記為「已完成」的總數量（防範同商品拆分成多筆明細時淨增量計算失準）
+        java.util.Map<String, Integer> newCompletedTotalMap = new java.util.HashMap<>();
         
         // 2. 【Redo 套用與防呆】：重新保存傳入的明細，並依據新狀態與「可用自由庫存」進行防護
         for (OrderItem item : items) {
@@ -251,29 +270,52 @@ public class OrderService {
                 item.setProductName(pName);
             }
             
-            // 如果新明細狀態是已完成，且非折扣商品，啟用庫存管理，且非已出貨/已結單狀態，則進行防呆
-            if ("已完成".equals(item.getItemStatus()) && !"PROD_DISCOUNT".equals(item.getProductId()) && !skipStockCheck) {
-                int oldQty = oldCompletedMap.getOrDefault(item.getProductId(), 0);
-                int netIncrease = Math.max(0, item.getQty() - oldQty);
-                
-                if (netIncrease > 0) {
-                    Optional<Menu> menuOpt = menuRepository.findByProductIdForUpdate(item.getProductId()); // 悲觀鎖
-                    if (menuOpt.isPresent()) {
-                        Menu menu = menuOpt.get();
-                        if (menu.getIsStockManaged()) {
-                            int otherResStock = orderItemRepository.getReservedStockByProductId(item.getProductId());
-                            int newlyCompleted = newlyCompletedMap.getOrDefault(item.getProductId(), 0);
-                            int currentFreeStock = menu.getStock() - (otherResStock + newlyCompleted);
-                            
-                            if (currentFreeStock - netIncrease < 0) {
-                                throw new IllegalArgumentException("儲存失敗！品項「" + menu.getName() + "」自由可用庫存不足（目前僅剩 " + currentFreeStock + "，欲完成 " + netIncrease + "）。請先補足庫存！");
-                            }
-                            newlyCompletedMap.put(item.getProductId(), newlyCompleted + netIncrease);
+            if ("已完成".equals(item.getItemStatus()) && !"PROD_DISCOUNT".equals(item.getProductId())) {
+                newCompletedTotalMap.put(item.getProductId(), newCompletedTotalMap.getOrDefault(item.getProductId(), 0) + item.getQty());
+            }
+        }
+
+        // 如果非已出貨/已結單狀態，則依每個商品的已完成數量與其他訂單保留量進行可用自由庫存防呆與稽核日誌記錄
+        if (!skipStockCheck) {
+            java.util.Set<String> allProductIds = new java.util.HashSet<>();
+            allProductIds.addAll(oldCompletedMap.keySet());
+            allProductIds.addAll(newCompletedTotalMap.keySet());
+
+            for (String productId : allProductIds) {
+                int newCompletedTotal = newCompletedTotalMap.getOrDefault(productId, 0);
+                int oldCompletedTotal = oldCompletedMap.getOrDefault(productId, 0);
+                int netIncrease = Math.max(0, newCompletedTotal - oldCompletedTotal);
+
+                Optional<Menu> menuOpt = menuRepository.findByProductIdForUpdate(productId); // 悲觀鎖
+                if (menuOpt.isPresent()) {
+                    Menu menu = menuOpt.get();
+                    if (Boolean.TRUE.equals(menu.getIsStockManaged())) {
+                        // 注意：existingItems 已在上方 deleteAll + flush，故此處查出之 otherResStock 為「不含本訂單的其他訂單保留量」
+                        int otherResStock = orderItemRepository.getReservedStockByProductId(productId);
+                        // 扣除他單保留與本單原保留後的「目前剩餘自由可用庫存」
+                        int currentFreeStock = menu.getStock() - otherResStock - oldCompletedTotal;
+                        
+                        if (netIncrease > 0 && currentFreeStock - netIncrease < 0) {
+                            saveAuditLog("STOCK_RESERVE_FAIL", "ERROR", String.format(
+                                    "訂單 [%s] 明細設為已完成失敗：品項 [%s %s] 自由可用庫存不足 (實體庫存 %d, 他單保留 %d, 本單原完成 %d, 剩餘可用 %d, 本次欲新增完成 %d)",
+                                    orderId, productId, menu.getName(), menu.getStock(), otherResStock, oldCompletedTotal, currentFreeStock, netIncrease
+                            ));
+                            throw new IllegalArgumentException("儲存失敗！品項「" + menu.getName() + "」自由可用庫存不足（目前僅剩 " + currentFreeStock + "，欲完成 " + netIncrease + "）。請先補足庫存！");
+                        }
+
+                        if (newCompletedTotal != oldCompletedTotal) {
+                            int afterTotalRes = otherResStock + newCompletedTotal;
+                            saveAuditLog("STOCK_RESERVE_CHANGE", "INFO", String.format(
+                                    "訂單 [%s] 明細預約保留變更：品項 [%s %s] 本單已完成保留 %d -> %d，總預約保留 %d (他單保留 %d, 實體庫存 %d, 剩餘可用 %d)",
+                                    orderId, productId, menu.getName(), oldCompletedTotal, newCompletedTotal,
+                                    afterTotalRes, otherResStock, menu.getStock(), menu.getStock() - afterTotalRes
+                            ));
                         }
                     }
                 }
             }
         }
+
         orderItemRepository.saveAll(items);
     }
 
@@ -319,6 +361,14 @@ public class OrderService {
                 dbOrder.setAmount(updatedOrder.getAmount());
             }
             Order saved = orderRepository.save(dbOrder);
+
+            // 若訂單狀態有變更，寫入狀態變更日誌
+            if (!Objects.equals(oldStatus, newStatus)) {
+                saveAuditLog("ORDER_STATUS_CHANGE", "INFO", String.format(
+                        "訂單 [%s] (顧客: %s) 狀態變更：%s -> %s",
+                        orderId, saved.getCustomerName(), oldStatus, newStatus
+                ));
+            }
             
             // 若訂單改為已出貨、已結單或已完成，同步將底下的品項明細狀態更新為「已完成」
             if ("已出貨".equals(newStatus) || "已結單".equals(newStatus) || "已完成".equals(newStatus)) {
@@ -359,6 +409,14 @@ public class OrderService {
             
             order.setStatus(status);
             Order saved = orderRepository.save(order);
+
+            // 若訂單狀態有變更，寫入狀態變更日誌
+            if (!Objects.equals(oldStatus, status)) {
+                saveAuditLog("ORDER_STATUS_CHANGE", "INFO", String.format(
+                        "訂單 [%s] (顧客: %s) 狀態變更：%s -> %s",
+                        orderId, saved.getCustomerName(), oldStatus, status
+                ));
+            }
             
             // 若訂單改為已出貨、已結單或已完成，同步將底下的品項明細狀態更新為「已完成」
             if ("已出貨".equals(status) || "已結單".equals(status) || "已完成".equals(status)) {
@@ -383,8 +441,9 @@ public class OrderService {
             throw new IllegalArgumentException("找不到此訂單: " + orderId);
         }
     }
+
     /**
-     * 輔助方法：當主訂單出貨/退回狀態時，連動實體總庫存 (all_stock)
+     * 輔助方法：當主訂單出貨/退回狀態時，連動實體總庫存 (all_stock) 並寫入稽核日誌
      */
     private void adjustPhysicalStockOnStatusChange(String orderId, String oldStatus, String newStatus) {
         boolean isOldDelivered = "已出貨".equals(oldStatus) || "已結單".equals(oldStatus);
@@ -405,6 +464,10 @@ public class OrderService {
             productQtyMap.put(item.getProductId(), productQtyMap.getOrDefault(item.getProductId(), 0) + item.getQty());
         }
         
+        // 判斷舊狀態是否屬於會計入預約保留的狀態
+        boolean isOldCountingInReserved = !("已出貨".equals(oldStatus) || "已結單".equals(oldStatus)
+                || "已取消".equals(oldStatus) || "已退回".equals(oldStatus));
+        
         // 2. 針對分組後的商品，進行一次性校驗與實體庫存扣減
         for (java.util.Map.Entry<String, Integer> entry : productQtyMap.entrySet()) {
             String productId = entry.getKey();
@@ -413,17 +476,21 @@ public class OrderService {
             Optional<Menu> menuOpt = menuRepository.findByProductIdForUpdate(productId); // 悲觀寫入鎖
             if (menuOpt.isPresent()) {
                 Menu menu = menuOpt.get();
-                if (menu.getIsStockManaged()) {
+                int beforeStock = menu.getStock() != null ? menu.getStock() : 0;
+
+                if (Boolean.TRUE.equals(menu.getIsStockManaged())) {
                     if (isNewDelivered) {
                         // 取得所有未出貨之預約保留總量
                         int totalReserved = orderItemRepository.getReservedStockByProductId(productId);
                         
-                        // 計算本訂單自身已佔用的保留量
+                        // 計算本訂單自身已佔用的保留量（僅當舊狀態原本有被計入 totalReserved 時才扣除）
                         int thisOrderCompleted = 0;
-                        for (OrderItem existingItem : items) {
-                            if (existingItem.getProductId().equals(productId) 
-                                    && "已完成".equals(existingItem.getItemStatus())) {
-                                thisOrderCompleted += existingItem.getQty();
+                        if (isOldCountingInReserved) {
+                            for (OrderItem existingItem : items) {
+                                if (existingItem.getProductId().equals(productId) 
+                                        && "已完成".equals(existingItem.getItemStatus())) {
+                                    thisOrderCompleted += existingItem.getQty();
+                                }
                             }
                         }
                         
@@ -431,23 +498,62 @@ public class OrderService {
                         int otherReserved = Math.max(0, totalReserved - thisOrderCompleted);
                         
                         // 可動用的自由庫存
-                        int availableFreeStock = menu.getStock() - otherReserved;
+                        int availableFreeStock = beforeStock - otherReserved;
                         
                         if (availableFreeStock - orderQty < 0) {
+                            saveAuditLog("STOCK_DEDUCT_FAIL", "ERROR", String.format(
+                                    "訂單 [%s] 出貨扣庫存失敗 (%s -> %s)：品項 [%s %s] 可用自由庫存不足 (總庫存 %d, 他單保留 %d, 欲出貨 %d)",
+                                    orderId, oldStatus, newStatus, productId, menu.getName(), beforeStock, otherReserved, orderQty
+                            ));
                             throw new IllegalArgumentException("儲存失敗！品項「" + menu.getName() 
-                                    + "」可用自由庫存不足（總庫存 " + menu.getStock() 
+                                    + "」可用自由庫存不足（總庫存 " + beforeStock 
                                     + "，需保留給其他訂單 " + otherReserved 
                                     + "，本次欲出貨 " + orderQty 
-                                    + "，剩餘可用僅 " + (menu.getStock() - otherReserved) + "）。請先補足庫存！");
+                                    + "，剩餘可用僅 " + (beforeStock - otherReserved) + "）。請先補足庫存！");
                         }
                         
-                        menu.setStock(menu.getStock() - orderQty);
+                        int afterStock = beforeStock - orderQty;
+                        menu.setStock(afterStock);
+                        menuRepository.save(menu);
+
+                        saveAuditLog("STOCK_DEDUCT_ON_SHIP", "INFO", String.format(
+                                "訂單 [%s] 出貨扣庫存 (%s -> %s)：品項 [%s %s] 扣除數量 %d，實體庫存 %d -> %d (他單保留: %d)",
+                                orderId, oldStatus, newStatus, productId, menu.getName(), orderQty, beforeStock, afterStock, otherReserved
+                        ));
                     } else {
-                        menu.setStock(menu.getStock() + orderQty);
+                        int afterStock = beforeStock + orderQty;
+                        menu.setStock(afterStock);
+                        menuRepository.save(menu);
+
+                        saveAuditLog("STOCK_RESTORE_ON_REVERT", "INFO", String.format(
+                                "訂單 [%s] 狀態退回加回庫存 (%s -> %s)：品項 [%s %s] 加回數量 %d，實體庫存 %d -> %d",
+                                orderId, oldStatus, newStatus, productId, menu.getName(), orderQty, beforeStock, afterStock
+                        ));
                     }
-                    menuRepository.save(menu);
+                } else {
+                    // 未啟用庫存防守時，寫入 WARN 日誌以便追蹤為何未扣庫存
+                    saveAuditLog("STOCK_SKIP_UNMANAGED", "WARN", String.format(
+                            "訂單 [%s] 狀態變更 (%s -> %s)：品項 [%s %s] (數量 %d) 因未啟用庫存防守 (isStockManaged=false)，略過異動實體庫存 (目前庫存維持 %d)",
+                            orderId, oldStatus, newStatus, productId, menu.getName(), orderQty, beforeStock
+                    ));
                 }
             }
+        }
+    }
+
+    /**
+     * 輔助方法：安全寫入系統操作日誌表 (system_logs) 與標準輸出
+     */
+    private void saveAuditLog(String action, String level, String message) {
+        try {
+            SystemLog log = new SystemLog();
+            log.setAction(action);
+            log.setLogLevel(level);
+            log.setMessage(message);
+            systemLogRepository.save(log);
+            System.out.println("[" + action + "] " + message);
+        } catch (Exception e) {
+            System.err.println("[SystemLog] 寫入稽核日誌失敗: " + e.getMessage());
         }
     }
 }

@@ -1,11 +1,15 @@
 package com.jwkl.cuisine.controller;
 
 import com.jwkl.cuisine.entity.Menu;
+import com.jwkl.cuisine.entity.SystemLog;
 import com.jwkl.cuisine.repository.MenuRepository;
+import com.jwkl.cuisine.repository.SystemLogRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 import com.jwkl.cuisine.service.ImageStorageService;
@@ -16,6 +20,9 @@ public class MenuController {
 
     @Autowired
     private MenuRepository menuRepository;
+
+    @Autowired
+    private SystemLogRepository systemLogRepository;
 
     @Autowired
     private ImageStorageService imageStorageService;
@@ -50,9 +57,21 @@ public class MenuController {
             return ResponseEntity.badRequest().body("{\"status\":\"error\",\"message\":\"商品料號 (product_id) 不可為空！\"}");
         }
         
+        String productId = menu.getProductId().trim();
+        menu.setProductId(productId);
+
         // 確保為英數檔名對齊
         if (menu.getImageFilename() == null || menu.getImageFilename().trim().isEmpty()) {
-            menu.setImageFilename(menu.getProductId() + ".jpg"); // 預設以 product_id.jpg 當作檔名對應
+            menu.setImageFilename(productId + ".jpg"); // 預設以 product_id.jpg 當作檔名對應
+        }
+
+        // 防呆保護：若該商品已存在於資料庫中，編輯菜單資訊時強制保留原有的庫存量 (stock) 與庫存防守開關 (isStockManaged)
+        // 避免編輯菜單時被預設值 (0 與 false) 覆蓋而導致庫存歸零或庫存防守失效
+        Optional<Menu> existingOpt = menuRepository.findById(productId);
+        if (existingOpt.isPresent()) {
+            Menu existing = existingOpt.get();
+            menu.setStock(existing.getStock());
+            menu.setIsStockManaged(existing.getIsStockManaged());
         }
 
         Menu saved = menuRepository.save(menu);
@@ -77,19 +96,32 @@ public class MenuController {
      * 直接更新/盤點商品庫存與啟用開關 (後台管理)
      */
     @PutMapping("/{productId}/stock")
+    @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<?> updateStock(
             @PathVariable String productId, 
             @RequestParam Integer stock,
             @RequestParam(required = false) Boolean isStockManaged) {
         
-        Optional<Menu> menuOpt = menuRepository.findById(productId);
+        Optional<Menu> menuOpt = menuRepository.findByProductIdForUpdate(productId);
         if (menuOpt.isPresent()) {
             Menu menu = menuOpt.get();
+            Integer oldStock = menu.getStock();
+            Boolean oldManaged = menu.getIsStockManaged();
+
             menu.setStock(stock);
             if (isStockManaged != null) {
                 menu.setIsStockManaged(isStockManaged);
             }
             Menu saved = menuRepository.save(menu);
+
+            // 寫入庫存盤點操作日誌
+            saveStockLog("STOCK_UPDATE", "INFO", String.format(
+                    "單品庫存盤點：品項 [%s %s] 實體庫存 %d -> %d，庫存防守 %s -> %s",
+                    saved.getProductId(), saved.getName(),
+                    oldStock, saved.getStock(),
+                    oldManaged, saved.getIsStockManaged()
+            ));
+
             return ResponseEntity.ok(saved);
         }
         return ResponseEntity.notFound().build();
@@ -104,10 +136,21 @@ public class MenuController {
             @PathVariable String productId, 
             @RequestParam Integer qty) {
         
-        Optional<Menu> menuOpt = menuRepository.findById(productId);
+        Optional<Menu> menuOpt = menuRepository.findByProductIdForUpdate(productId);
         if (menuOpt.isPresent()) {
-            menuRepository.addStock(productId, qty);
-            Menu updated = menuRepository.findById(productId).get();
+            Menu menu = menuOpt.get();
+            int oldStock = menu.getStock() != null ? menu.getStock() : 0;
+            int newStock = oldStock + qty;
+            menu.setStock(newStock);
+            Menu updated = menuRepository.save(menu);
+
+            // 寫入入庫登記操作日誌
+            saveStockLog("STOCK_ADD", "INFO", String.format(
+                    "商品入庫登記：品項 [%s %s] 入庫 +%d，實體庫存 %d -> %d (庫存防守: %s)",
+                    updated.getProductId(), updated.getName(),
+                    qty, oldStock, updated.getStock(), updated.getIsStockManaged()
+            ));
+
             return ResponseEntity.ok(updated);
         }
         return ResponseEntity.notFound().build();
@@ -119,6 +162,7 @@ public class MenuController {
     @PutMapping("/stock/batch")
     @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<?> batchUpdateStock(@RequestBody List<java.util.Map<String, Object>> updates) {
+        List<String> changeDetails = new ArrayList<>();
         for (java.util.Map<String, Object> update : updates) {
             String productId = (String) update.get("productId");
             if (productId == null) continue;
@@ -126,18 +170,43 @@ public class MenuController {
             Object stockObj = update.get("stock");
             Object isManagedObj = update.get("isStockManaged");
             
-            Optional<Menu> menuOpt = menuRepository.findById(productId);
+            Optional<Menu> menuOpt = menuRepository.findByProductIdForUpdate(productId);
             if (menuOpt.isPresent()) {
                 Menu menu = menuOpt.get();
-                if (stockObj != null) {
-                    menu.setStock(Integer.parseInt(stockObj.toString()));
+                Integer oldStock = menu.getStock();
+                Boolean oldManaged = menu.getIsStockManaged();
+
+                Integer newStock = stockObj != null ? Integer.parseInt(stockObj.toString()) : oldStock;
+                Boolean newManaged = isManagedObj != null ? Boolean.parseBoolean(isManagedObj.toString()) : oldManaged;
+
+                boolean changed = !Objects.equals(oldStock, newStock) || !Objects.equals(oldManaged, newManaged);
+                if (changed) {
+                    menu.setStock(newStock);
+                    menu.setIsStockManaged(newManaged);
+                    menuRepository.save(menu);
+                    changeDetails.add(String.format("[%s %s: 庫存 %d->%d, 防守 %s->%s]",
+                            menu.getProductId(), menu.getName(), oldStock, newStock, oldManaged, newManaged));
                 }
-                if (isManagedObj != null) {
-                    menu.setIsStockManaged(Boolean.parseBoolean(isManagedObj.toString()));
-                }
-                menuRepository.save(menu);
             }
         }
+
+        if (!changeDetails.isEmpty()) {
+            saveStockLog("STOCK_BATCH_UPDATE", "INFO", "批次庫存設定變更：" + String.join("；", changeDetails));
+        }
+
         return ResponseEntity.ok("{\"status\":\"success\",\"message\":\"批次庫存更新成功！\"}");
+    }
+
+    private void saveStockLog(String action, String level, String message) {
+        try {
+            SystemLog log = new SystemLog();
+            log.setAction(action);
+            log.setLogLevel(level);
+            log.setMessage(message);
+            systemLogRepository.save(log);
+            System.out.println("[" + action + "] " + message);
+        } catch (Exception e) {
+            System.err.println("[SystemLog] 寫入庫存日誌失敗: " + e.getMessage());
+        }
     }
 }
